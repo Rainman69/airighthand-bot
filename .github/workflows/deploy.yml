@@ -36,14 +36,16 @@ jobs:
           command: deploy
 
       - name: Register Telegram webhook
-        if: ${{ env.WORKER_URL != '' }}
         env:
-          WORKER_URL: ${{ vars.WORKER_URL }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_WEBHOOK_SECRET: ${{ secrets.TELEGRAM_WEBHOOK_SECRET }}
+          WORKER_URL: ${{ vars.WORKER_URL || 'https://airighthand-bot.airighthand-64a9165f.workers.dev' }}
         run: |
+          WEBHOOK_URL="${WORKER_URL}/webhook"
+          echo "Setting webhook to: $WEBHOOK_URL"
           curl -fsS -X POST \
             "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook" \
             -H "Content-Type: application/json" \
-            -d "{\"url\":\"${WORKER_URL}/webhook\",\"secret_token\":\"${TELEGRAM_WEBHOOK_SECRET}\",\"allowed_updates\":[\"message\",\"edited_message\",\"callback_query\",\"inline_query\",\"pre_checkout_query\",\"message_reaction\"],\"drop_pending_updates\":false}" \
+            -d "{\"url\":\"${WEBHOOK_URL}\",\"secret_token\":\"${TELEGRAM_WEBHOOK_SECRET}\",\"allowed_updates\":[\"message\",\"edited_message\",\"callback_query\",\"inline_query\",\"pre_checkout_query\",\"message_reaction\"],\"drop_pending_updates\":false}" \
+            && echo "Webhook registered successfully" \
             || echo "setWebhook failed (non-fatal)"

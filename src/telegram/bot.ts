@@ -17,7 +17,10 @@ export function buildBot(env: Env): Bot {
   registerInline(bot, env);
   registerPayments(bot, env);
 
+  // Photo handler (images sent directly or as replies).
   bot.on(":photo", (ctx) => handlePhoto(ctx, env));
+
+  // Voice / audio handler.
   bot.on([":voice", ":audio"], (ctx) => handleVoice(ctx, env));
 
   // Default text handler — runs for any text that wasn't a command.
@@ -26,8 +29,20 @@ export function buildBot(env: Env): Bot {
     await handleText(ctx, env);
   });
 
+  // Handle edited messages the same as new messages (so edits get responses).
+  bot.on("edited_message:text", async (ctx) => {
+    const text = ctx.editedMessage?.text;
+    if (!text || text.startsWith("/")) return;
+    // Re-use the normal text handler with the edited message as context.
+    // We swap message for editedMessage so handleText reads the right content.
+    (ctx as any).message = ctx.editedMessage;
+    await handleText(ctx as any, env);
+  });
+
   bot.catch((err) => {
-    log.error("bot error", { err: redact(err.error instanceof Error ? err.error.message : String(err.error)) });
+    log.error("bot error", {
+      err: redact(err.error instanceof Error ? err.error.message : String(err.error)),
+    });
   });
 
   return bot;

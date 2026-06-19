@@ -1,9 +1,5 @@
-// Minimal localisation. Right now we ship English + Persian (fa) for the
-// welcome and help strings — everything else is auto-translated by the model
-// based on the user's input language.
-//
-// To add a locale: add another entry to STRINGS and (optionally) extend
-// `pickLocale` if the language_code mapping isn't already obvious.
+// Minimal localisation for welcome and help strings.
+// Everything else is auto-translated by the model based on the user's language.
 
 type Locale = "en" | "fa";
 
@@ -16,93 +12,99 @@ const STRINGS: Record<Locale, Strings> = {
   en: {
     welcome: `<b>👋 Welcome to AiRightHand</b>
 
-I'm your AI right hand on Telegram — quick replies, deep analysis, image generation, voice, reminders, and more.
+I'm your AI assistant on Telegram — smart chat, image generation, voice messages, reminders, translations, and more.
 
-<b>Try:</b>
-• Just <i>chat</i> with me — I pick the right model automatically.
-• <code>/image a cozy reading nook at golden hour</code>
+<b>Try me:</b>
+• Just <i>chat</i> with me — I pick the right model automatically
+• <code>/image a cozy cabin in the mountains</code>
 • <code>/tts Hello world</code>
 • <code>/remind 30m drink water</code>
-• <code>/model fast | balanced | heavy | auto</code>
-• <code>/help</code> — full menu
+• <code>/secretary on</code> — personal secretary mode
+• <code>/help</code> — full command list`,
 
-<i>Powered by Cloudflare Workers AI.</i>`,
     help: `<b>Commands</b>
 
-<b>Chat</b>
-• Send any text — I'll reply (streaming).
-• Send a photo — I'll describe it / answer questions about it.
-• Send a voice note — I'll transcribe and respond.
+<b>💬 Chat</b>
+• Send any text — I reply with streaming live updates
+• Send a photo — I describe it or answer questions about it
+• Send a voice note — I transcribe and respond
 
-<b>Models</b>
+<b>🧠 Models</b>
 • /model fast — quick replies
-• /model balanced — best all-rounder (default for longer prompts)
+• /model balanced — best all-rounder
 • /model heavy — deep reasoning with visible thinking
-• /model auto — let me choose
+• /model auto — let me choose (default)
 
-<b>Media</b>
+<b>🎨 Media</b>
 • /image &lt;prompt&gt; — generate an image
-• /tts &lt;text&gt; — speak it
-• /translate &lt;lang&gt;: &lt;text&gt; — fast m2m100 translation (or reply with /translate &lt;lang&gt;)
-• Reply to a voice/audio — I'll transcribe + answer
+• /tts &lt;text&gt; — speak it aloud
+• /translate &lt;lang&gt;: &lt;text&gt; — translate (reply with /translate &lt;lang&gt;)
 
-<b>Secretary</b>
+<b>📋 Secretary</b>
+• /secretary on/off — personal secretary mode
+• /todos — view your task list
+• /done &lt;n&gt; — mark task complete
+• /actions — extract action items from recent chat
 • /remind &lt;when&gt; &lt;text&gt; — e.g. "/remind 2h call mom"
+• /reminders — list pending reminders
 • /summarize — summarize this conversation
-• /poll &lt;question&gt; | opt1 | opt2 | ... — quick poll
+• /poll &lt;question&gt; | opt1 | opt2 — quick poll
+
+<b>🧠 Memory</b>
 • /recall [topic] — what I remember about you
 • /forget — wipe my long-term memory of you
-• /relay @other_bot &lt;text&gt; — relay a message to another bot
-• /buy — support with Telegram Stars ⭐
 
-<b>Owner only</b>
-• /stats — usage and account-pool status`,
+<b>🔧 Owner only</b>
+• /stats — usage and AI pool status`,
   },
 
   fa: {
     welcome: `<b>👋 به AiRightHand خوش آمدید</b>
 
-من دستیار هوش مصنوعی شما در تلگرام هستم — پاسخ‌های سریع، تحلیل عمیق، تولید تصویر، تبدیل صدا و یادآور.
+دستیار هوش مصنوعی شما در تلگرام — چت هوشمند، تولید تصویر، پیام صوتی، یادآور، ترجمه و بیشتر.
 
 <b>امتحان کنید:</b>
-• فقط با من <i>چت</i> کنید — مدل مناسب را خودکار انتخاب می‌کنم.
-• <code>/image a cozy reading nook at golden hour</code>
+• فقط <i>چت</i> کنید — مدل مناسب را خودکار انتخاب می‌کنم
+• <code>/image a cozy cabin in the mountains</code>
 • <code>/tts سلام دنیا</code>
 • <code>/remind 30m آب بنوش</code>
-• <code>/model fast | balanced | heavy | auto</code>
-• <code>/help</code> — منوی کامل
+• <code>/secretary on</code> — حالت منشی شخصی
+• <code>/help</code> — فهرست کامل دستورات`,
 
-<i>قدرت‌گرفته از Cloudflare Workers AI.</i>`,
-    help: `<b>فرمان‌ها</b>
+    help: `<b>دستورات</b>
 
-<b>چت</b>
-• هر متنی بفرستید — پاسخ خواهم داد (با جریان زنده).
-• عکس بفرستید — توصیف می‌کنم / به سوالات درباره‌اش پاسخ می‌دهم.
-• پیام صوتی بفرستید — متن می‌کنم و پاسخ می‌دهم.
+<b>💬 چت</b>
+• هر متنی بفرستید — پاسخ زنده با استریم
+• عکس بفرستید — توصیف می‌کنم / پاسخ می‌دهم
+• پیام صوتی بفرستید — متن + جواب
 
-<b>مدل‌ها</b>
-• /model fast — پاسخ سریع
+<b>🧠 مدل‌ها</b>
+• /model fast — سریع
 • /model balanced — همه‌منظوره
-• /model heavy — استدلال عمیق با نمایش فکر
+• /model heavy — استدلال عمیق
 • /model auto — انتخاب خودکار
 
-<b>رسانه</b>
-• /image &lt;متن&gt; — تولید تصویر
+<b>🎨 رسانه</b>
+• /image &lt;توضیح&gt; — تولید تصویر
 • /tts &lt;متن&gt; — تبدیل به صدا
-• /translate &lt;زبان&gt;: &lt;متن&gt; — ترجمه سریع با m2m100 (یا پاسخ با /translate &lt;زبان&gt;)
-• پاسخ به پیام صوتی — متن + جواب
+• /translate &lt;زبان&gt;: &lt;متن&gt; — ترجمه
 
-<b>منشی</b>
-• /remind &lt;زمان&gt; &lt;متن&gt; — مثلا "/remind 2h زنگ بزن مامان"
+<b>📋 منشی</b>
+• /secretary on/off — حالت منشی شخصی
+• /todos — لیست وظایف
+• /done &lt;شماره&gt; — انجام شد
+• /actions — استخراج اقدامات از مکالمه
+• /remind &lt;زمان&gt; &lt;متن&gt; — مثلا "/remind 2h زنگ بزن"
+• /reminders — یادآورهای در انتظار
 • /summarize — خلاصه مکالمه
-• /poll &lt;سوال&gt; | گزینه ۱ | گزینه ۲ | ...
-• /recall [موضوع] — چیزی که از شما به یاد دارم
-• /forget — پاک کردن حافظه بلندمدت
-• /relay @other_bot &lt;متن&gt; — ارسال پیام به ربات دیگر
-• /buy — حمایت با Stars تلگرام ⭐
+• /poll &lt;سوال&gt; | گزینه ۱ | گزینه ۲ — نظرسنجی
 
-<b>فقط مالک</b>
-• /stats — وضعیت استفاده و آکانت‌های هوش مصنوعی`,
+<b>🧠 حافظه</b>
+• /recall [موضوع] — چیزی که از شما می‌دانم
+• /forget — پاک کردن حافظه بلندمدت
+
+<b>🔧 فقط مالک</b>
+• /stats — آمار استفاده`,
   },
 };
 
