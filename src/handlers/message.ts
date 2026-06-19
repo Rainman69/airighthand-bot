@@ -8,7 +8,13 @@ import type { Env } from "../env.js";
 import type { Context } from "grammy";
 import { chatStream, chatComplete, type ChatMessage } from "../ai/chat.js";
 import { routeTier, type Tier } from "../ai/models.js";
-import { appendHistory, getOrCreateUser, getRecentHistory } from "../storage/d1.js";
+import {
+  appendHistory,
+  bumpRequestCount,
+  getOrCreateUser,
+  getRecentHistory,
+  setLastTier,
+} from "../storage/d1.js";
 import { renderForTelegram, chunkForTelegram } from "../utils/markdown.js";
 import { StreamEditor } from "../utils/stream.js";
 import { TOOLS } from "../tools/registry.js";
@@ -16,6 +22,8 @@ import { executeTool, type ExecCtx } from "../tools/executor.js";
 import { BotApi } from "../telegram/api.js";
 import { redact } from "../utils/secrets.js";
 import { log } from "../utils/log.js";
+import { buildMemoryBlock, distilFacts, recallRelevant } from "../features/memory.js";
+import { moderateInput, moderateOutput, REFUSAL_TEXT } from "../features/moderation.js";
 
 const MAX_TOOL_ROUNDS = 4;
 
@@ -52,14 +60,26 @@ export async function handleText(ctx: Context, env: Env): Promise<void> {
   const history = await getRecentHistory(env, from.id, 16);
 
   const userPin = (user.model_pin ?? "auto") as Tier | "auto";
-  const historyTier: Tier | undefined = undefined;
+  const historyTier = (user.last_tier ?? undefined) as Tier | undefined;
   const tier = routeTier(text, { userPin, historyTier });
 
   // Show "typing…" while we work.
   await ctx.api.sendChatAction(ctx.chat!.id, "typing").catch(() => {});
 
+  // Llama-Guard pre-filter on the user's text. Fails open (see moderation.ts).
+  const inputCheck = await moderateInput(env, text);
+  if (!inputCheck.safe) {
+    log.info("input refused by guard", { categories: inputCheck.categories });
+    await ctx.reply(REFUSAL_TEXT, { reply_parameters: { message_id: msg.message_id } });
+    return;
+  }
+
   // Placeholder reply we'll keep editing as the stream arrives.
   const placeholder = await ctx.reply("…", { reply_parameters: { message_id: msg.message_id } });
+
+  // Pull relevant long-term memories for this question.
+  const memories = await recallRelevant(env, from.id, text).catch(() => [] as string[]);
+  const memoryBlock = buildMemoryBlock(memories);
 
   const editor = new StreamEditor(async (t) => {
     const safe = renderForTelegram(redact(t));
@@ -69,8 +89,12 @@ export async function handleText(ctx: Context, env: Env): Promise<void> {
     });
   }, 900);
 
+  const systemContent = memoryBlock
+    ? `${SYSTEM_PROMPT}\n\n${memoryBlock}`
+    : SYSTEM_PROMPT;
+
   const messages: ChatMessage[] = [
-    { role: "system", content: SYSTEM_PROMPT },
+    { role: "system", content: systemContent },
     ...history.map((h) => ({ role: h.role, content: h.content }) as ChatMessage),
     { role: "user", content: text },
   ];
@@ -138,6 +162,18 @@ export async function handleText(ctx: Context, env: Env): Promise<void> {
 
     await editor.flush();
 
+    // Post-filter on the assistant reply. Fails CLOSED.
+    if (fullAssistant.trim()) {
+      const outCheck = await moderateOutput(env, fullAssistant);
+      if (!outCheck.safe) {
+        log.info("output refused by guard", { categories: outCheck.categories });
+        await ctx.api
+          .editMessageText(ctx.chat!.id, placeholder.message_id, REFUSAL_TEXT)
+          .catch(() => {});
+        return;
+      }
+    }
+
     // If the model produced empty text but executed tool calls, leave a small confirmation.
     if (!fullAssistant.trim()) {
       await ctx.api.editMessageText(
@@ -157,6 +193,14 @@ export async function handleText(ctx: Context, env: Env): Promise<void> {
 
     await appendHistory(env, from.id, ctx.chat!.id, "user", text);
     await appendHistory(env, from.id, ctx.chat!.id, "assistant", fullAssistant);
+    await setLastTier(env, from.id, lastTier);
+    await bumpRequestCount(env, from.id);
+
+    // Best-effort: distil 0–3 durable facts about the user from this exchange.
+    // We don't await to avoid blocking the reply UX; failure is silent.
+    if (fullAssistant.trim().length > 20) {
+      void distilFacts(env, from.id, text, fullAssistant).catch(() => {});
+    }
   } catch (e) {
     const err = redact(e instanceof Error ? e.message : String(e));
     log.error("chat failed", { err, tier: lastTier });

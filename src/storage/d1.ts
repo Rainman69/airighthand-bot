@@ -54,7 +54,23 @@ export async function initDB(env: Env): Promise<void> {
       `CREATE INDEX IF NOT EXISTS idx_memory_user ON memory(user_id)`
     ),
   ]);
+  // SQLite has no `ADD COLUMN IF NOT EXISTS`; we do it per-column and swallow
+  // the "duplicate column" error so repeated boots are idempotent.
+  await addColumnIfMissing(env, "users", "last_tier", "TEXT");
   initialised = true;
+}
+
+async function addColumnIfMissing(
+  env: Env,
+  table: string,
+  column: string,
+  type: string
+): Promise<void> {
+  try {
+    await env.DB.prepare(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`).run();
+  } catch {
+    // Column already exists — fine.
+  }
 }
 
 export interface UserRow {
@@ -66,6 +82,7 @@ export interface UserRow {
   pro_until: number | null;
   created_at: number | null;
   requests: number;
+  last_tier: "fast" | "balanced" | "heavy" | null;
 }
 
 export async function getOrCreateUser(
@@ -96,7 +113,26 @@ export async function getOrCreateUser(
     pro_until: null,
     created_at: Date.now(),
     requests: 0,
+    last_tier: null,
   };
+}
+
+export async function setLastTier(
+  env: Env,
+  user_id: number,
+  tier: "fast" | "balanced" | "heavy"
+): Promise<void> {
+  await env.DB.prepare("UPDATE users SET last_tier = ?1 WHERE user_id = ?2")
+    .bind(tier, user_id)
+    .run();
+}
+
+export async function bumpRequestCount(env: Env, user_id: number): Promise<void> {
+  await env.DB.prepare(
+    "UPDATE users SET requests = COALESCE(requests, 0) + 1 WHERE user_id = ?1"
+  )
+    .bind(user_id)
+    .run();
 }
 
 export async function setUserModelPin(

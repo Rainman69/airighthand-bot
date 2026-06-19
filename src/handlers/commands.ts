@@ -1,62 +1,26 @@
 // Command handlers: /start /help /model /image /tts /remind /summarize /stats etc.
 
-import type { Bot, Context } from "grammy";
+import type { Bot } from "grammy";
 import { InlineKeyboard, InputFile } from "grammy";
 import type { Env } from "../env.js";
-import { setUserModelPin, getOrCreateUser, getRecentHistory, appendHistory, dueReminders, markReminderDone } from "../storage/d1.js";
+import { setUserModelPin, getOrCreateUser } from "../storage/d1.js";
 import { generateImage } from "../ai/image.js";
 import { synthesize, transcribe } from "../ai/audio.js";
 import { describeImage } from "../ai/vision.js";
-import { chatComplete } from "../ai/chat.js";
 import { BotApi } from "../telegram/api.js";
 import { renderForTelegram } from "../utils/markdown.js";
 import { redact } from "../utils/secrets.js";
+import { parseWhen, dispatchDueReminders } from "../features/reminders.js";
+import { summarizeRecent } from "../features/secretary.js";
+import { recallRelevant } from "../features/memory.js";
+import { localize } from "../utils/i18n.js";
 
-const WELCOME = `<b>👋 Welcome to AiRightHand</b>
-
-I'm your AI right hand on Telegram — quick replies, deep analysis, image generation, voice, reminders, and more.
-
-<b>Try:</b>
-• Just <i>chat</i> with me — I pick the right model automatically.
-• <code>/image a cozy reading nook at golden hour</code>
-• <code>/tts Hello world</code>
-• <code>/remind 30m drink water</code>
-• <code>/model fast | balanced | heavy | auto</code>
-• <code>/help</code> — full menu
-
-<i>Powered by Cloudflare Workers AI.</i>`;
-
-const HELP = `<b>Commands</b>
-
-<b>Chat</b>
-• Send any text — I'll reply (streaming).
-• Send a photo — I'll describe it / answer questions about it.
-• Send a voice note — I'll transcribe and respond.
-
-<b>Models</b>
-• /model fast — quick replies
-• /model balanced — best all-rounder (default for longer prompts)
-• /model heavy — deep reasoning with visible thinking
-• /model auto — let me choose
-
-<b>Media</b>
-• /image &lt;prompt&gt; — generate an image
-• /tts &lt;text&gt; — speak it
-• Reply to a voice/audio with /transcribe — get text
-
-<b>Secretary</b>
-• /remind &lt;when&gt; &lt;text&gt; — e.g. "/remind 2h call mom"
-• /summarize — summarize this conversation
-• /poll &lt;question&gt; | opt1 | opt2 | ... — quick poll
-• /buy — support with Telegram Stars ⭐
-
-<b>Owner only</b>
-• /stats — usage and account-pool status`;
+// Welcome / help strings live in src/utils/i18n.ts under the keys "welcome" and "help".
 
 export function registerCommands(bot: Bot, env: Env) {
   bot.command("start", async (ctx) => {
     if (ctx.from) await getOrCreateUser(env, ctx.from.id, ctx.from.username, ctx.from.language_code);
-    await ctx.reply(WELCOME, {
+    await ctx.reply(localize(ctx.from?.language_code, "welcome"), {
       parse_mode: "HTML",
       reply_markup: new InlineKeyboard()
         .text("⚡ Fast", "model:fast")
@@ -67,7 +31,9 @@ export function registerCommands(bot: Bot, env: Env) {
     });
   });
 
-  bot.command("help", (ctx) => ctx.reply(HELP, { parse_mode: "HTML" }));
+  bot.command("help", (ctx) =>
+    ctx.reply(localize(ctx.from?.language_code, "help"), { parse_mode: "HTML" })
+  );
   bot.command("ping", (ctx) => ctx.reply("🏓 pong"));
 
   bot.command("model", async (ctx) => {
@@ -128,16 +94,46 @@ export function registerCommands(bot: Bot, env: Env) {
   });
 
   bot.command("summarize", async (ctx) => {
-    const hist = await getRecentHistory(env, ctx.from!.id, 40);
-    if (!hist.length) return ctx.reply("Nothing to summarize yet.");
-    const r = await chatComplete(env, {
-      tier: "balanced",
-      messages: [
-        { role: "system", content: "Summarize the following conversation in 5–8 bullet points. Be precise." },
-        { role: "user", content: hist.map((h) => `${h.role}: ${h.content}`).join("\n\n") },
-      ],
+    const text = await summarizeRecent(env, ctx.from!.id, 40);
+    await ctx.reply(renderForTelegram(text), { parse_mode: "HTML" });
+  });
+
+  bot.command("recall", async (ctx) => {
+    const q = (ctx.match || "").toString().trim();
+    const facts = q
+      ? await recallRelevant(env, ctx.from!.id, q, 8)
+      : (await env.DB.prepare(
+          "SELECT fact FROM memory WHERE user_id = ?1 ORDER BY id DESC LIMIT 10"
+        )
+          .bind(ctx.from!.id)
+          .all<{ fact: string }>()).results?.map((r) => r.fact) ?? [];
+    if (!facts.length) return ctx.reply("I don't remember anything specific about you yet.");
+    await ctx.reply(
+      "<b>🧠 What I remember:</b>\n" + facts.map((f) => "• " + f).join("\n"),
+      { parse_mode: "HTML" }
+    );
+  });
+
+  bot.command("forget", async (ctx) => {
+    await env.DB.prepare("DELETE FROM memory WHERE user_id = ?1")
+      .bind(ctx.from!.id)
+      .run();
+    await ctx.reply("🧽 All long-term memory about you has been erased.");
+  });
+
+  // /relay @other_bot some text — copy `text` to a chat where both bots are present.
+  // Bot-to-bot DMs aren't allowed by Telegram, so this expects to be used inside
+  // a group/channel the user has added both bots to; the relay is just a normal
+  // sendMessage to the current chat that @-mentions the target bot.
+  bot.command("relay", async (ctx) => {
+    const arg = (ctx.match || "").toString().trim();
+    const m = arg.match(/^(@\w{3,})\s+([\s\S]+)/);
+    if (!m) return ctx.reply("Usage: <code>/relay @target_bot your message</code>", { parse_mode: "HTML" });
+    const target = m[1];
+    const text = m[2];
+    await ctx.reply(`${target} ${text}`, {
+      reply_parameters: { message_id: ctx.message!.message_id },
     });
-    await ctx.reply(renderForTelegram(r.text || "(empty)"), { parse_mode: "HTML" });
   });
 
   bot.command("poll", async (ctx) => {
@@ -168,13 +164,34 @@ export function registerCommands(bot: Bot, env: Env) {
     const totalUsers = await env.DB.prepare("SELECT COUNT(*) as c FROM users").first<{ c: number }>();
     const totalMsgs = await env.DB.prepare("SELECT COUNT(*) as c FROM history").first<{ c: number }>();
     const remind = await env.DB.prepare("SELECT COUNT(*) as c FROM reminders WHERE done=0").first<{ c: number }>();
-    const poolRaw = await env.KV.get("pool:state:v1", "json");
+    const facts = await env.DB.prepare("SELECT COUNT(*) as c FROM memory").first<{ c: number }>();
+    const proUsers = await env.DB.prepare(
+      "SELECT COUNT(*) as c FROM users WHERE is_pro = 1 AND (pro_until IS NULL OR pro_until > ?1)"
+    )
+      .bind(Date.now())
+      .first<{ c: number }>();
+    const poolRaw = (await env.KV.get("pool:state:v1", "json")) as
+      | { accounts?: Record<string, { ok: number; fail: number; disabled_until: number }> }
+      | null;
+
+    const now = Date.now();
+    const poolSummary = poolRaw?.accounts
+      ? Object.entries(poolRaw.accounts)
+          .map(
+            ([id, s]) =>
+              `• ${id.slice(0, 6)}… ok=${s.ok} fail=${s.fail}` +
+              (s.disabled_until > now ? ` (cooldown ${Math.round((s.disabled_until - now) / 1000)}s)` : "")
+          )
+          .join("\n")
+      : "(no pool state yet)";
+
     await ctx.reply(
       `<b>📊 Stats</b>\n` +
-        `users: <b>${totalUsers?.c ?? 0}</b>\n` +
+        `users: <b>${totalUsers?.c ?? 0}</b> (pro: ${proUsers?.c ?? 0})\n` +
         `messages: <b>${totalMsgs?.c ?? 0}</b>\n` +
+        `memories: <b>${facts?.c ?? 0}</b>\n` +
         `pending reminders: <b>${remind?.c ?? 0}</b>\n\n` +
-        `<b>AI pool</b>\n<code>${JSON.stringify(poolRaw, null, 2).slice(0, 1500)}</code>`,
+        `<b>AI pool</b>\n<code>${poolSummary}</code>`,
       { parse_mode: "HTML" }
     );
   });
@@ -187,41 +204,9 @@ export function registerCommands(bot: Bot, env: Env) {
 
   bot.callbackQuery("help", async (ctx) => {
     await ctx.answerCallbackQuery();
-    await ctx.reply(HELP, { parse_mode: "HTML" });
+    await ctx.reply(localize(ctx.from?.language_code, "help"), { parse_mode: "HTML" });
   });
 }
 
-/** Dispatch reminders from cron. */
-export async function dispatchDueReminders(env: Env) {
-  const r = await dueReminders(env, Date.now());
-  if (!r.results?.length) return;
-  const api = BotApi.fromEnv(env);
-  for (const row of r.results) {
-    try {
-      await api.call("sendMessage", {
-        chat_id: row.chat_id,
-        text: `⏰ <b>Reminder:</b> ${row.text}`,
-        parse_mode: "HTML",
-      });
-      await markReminderDone(env, row.id);
-    } catch {
-      // skip on failure; will retry next minute
-    }
-  }
-}
-
-function parseWhen(s: string): number | null {
-  s = s.trim().toLowerCase();
-  const m = s.match(/^(\d+)(s|sec|m|min|h|hr|d|day)$/);
-  if (m) {
-    const n = Number(m[1]);
-    const u = m[2];
-    const mul = u.startsWith("s") ? 1000 : u.startsWith("m") ? 60_000 : u.startsWith("h") ? 3_600_000 : 86_400_000;
-    return Date.now() + n * mul;
-  }
-  const d = Date.parse(s);
-  return isNaN(d) ? null : d;
-}
-
-// Re-export for index.ts so cron handler can import from a single place.
-export { transcribe, describeImage };
+// Re-export for any other handlers that want them.
+export { transcribe, describeImage, dispatchDueReminders };
