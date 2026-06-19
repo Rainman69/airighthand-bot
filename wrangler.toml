@@ -1,0 +1,40 @@
+name = "airighthand-bot"
+main = "src/index.ts"
+compatibility_date = "2025-01-15"
+compatibility_flags = ["nodejs_compat"]
+
+# ───────────── KV: short-term cache, rate-limit, account cooldowns ─────────────
+# Create with:  wrangler kv namespace create AIRH_KV
+# Then paste the IDs below.
+[[kv_namespaces]]
+binding = "KV"
+id = "REPLACE_WITH_KV_ID"
+preview_id = "REPLACE_WITH_KV_PREVIEW_ID"
+
+# ───────────── D1: users, chats, memory, reminders, usage ─────────────
+# Create with:  wrangler d1 create airighthand
+[[d1_databases]]
+binding = "DB"
+database_name = "airighthand"
+database_id = "REPLACE_WITH_D1_ID"
+
+# ───────────── R2: cache for generated images / audio ─────────────
+# Create with:  wrangler r2 bucket create airighthand-media
+[[r2_buckets]]
+binding = "MEDIA"
+bucket_name = "airighthand-media"
+
+# ───────────── Cron: due-reminder dispatcher ─────────────
+[triggers]
+crons = ["* * * * *"]
+
+# ───────────── Observability ─────────────
+[observability]
+enabled = true
+
+# ───────────── Secrets (set with `wrangler secret put`) ─────────────
+# TELEGRAM_BOT_TOKEN              — bot token from @BotFather
+# TELEGRAM_WEBHOOK_SECRET         — random 32-byte hex used as Telegram secret_token
+# CF_ACCOUNTS_JSON                — JSON array [{"id":"…","token":"…"}, …] of Cloudflare AI accounts
+# OWNER_ID                        — Telegram user ID of the bot owner
+# TELEGRAM_PAYMENT_PROVIDER_TOKEN — optional, for fiat payments
