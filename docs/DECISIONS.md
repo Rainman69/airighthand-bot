@@ -42,3 +42,60 @@ is fine here — at worst we briefly call an account that just hit its quota and
 immediately rotate to the next one.
 
 **Consequence.** Zero extra D1 writes on the hot path.
+
+---
+
+## 2026-06-19 — Long-term memory storage shape
+
+**Context.** Phase 5 requires per-user durable facts retrieved by semantic
+similarity. The candidates were:
+  (a) D1 with embeddings stored as BLOB,
+  (b) D1 with embeddings stored as JSON-stringified float arrays,
+  (c) Vectorize (Cloudflare's vector DB).
+
+**Decision.** Option (b). Vectorize is great but adds a binding and a separate
+quota; for the realistic N ≲ a few hundred facts per user, in-Worker cosine
+similarity over JSON-parsed vectors is fast enough and keeps the deploy
+self-contained (one D1, no extra service).
+
+**Consequence.** Fact ingestion is `INSERT` + JSON.stringify of a 1024-d float
+array (~10 KB). Recall is one indexed `SELECT … WHERE user_id` over the most
+recent 500 rows, then in-memory cosine. We cap at 200 facts/user with FIFO
+pruning to keep recall snappy.
+
+---
+
+## 2026-06-19 — Llama-Guard fail policy
+
+**Context.** Moderation has to fail in *some* direction when the guard model
+itself errors (network, quota, parse).
+
+**Decision.**
+  - Input check **fails OPEN**: a broken guard shouldn't lock the user out of
+    their assistant on a transient hiccup. The downstream chat model still
+    has its own safety training.
+  - Output check **fails CLOSED**: if we can't verify the reply is safe, drop
+    it and show a polite refusal. Sending a possibly-bad reply is worse than
+    sending nothing.
+
+**Consequence.** Two thin wrappers (`moderateInput`, `moderateOutput`) with
+opposite catch-policies, both in `src/features/moderation.ts`. The system
+remains usable when the guard model is unreachable while the user-facing
+blast radius of a misclassification stays small.
+
+---
+
+## 2026-06-19 — Bot-to-bot "/relay" is a hint, not a transport
+
+**Context.** Telegram explicitly forbids bot↔bot DMs. The roadmap asks for a
+`/relay` command demonstrating bot-to-bot communication.
+
+**Decision.** Treat `/relay @other_bot <text>` as a relay *in the current
+chat*: post a message in this chat that @-mentions the target bot with
+`<text>` as its content. It works as advertised when both bots share a
+group/channel and is a no-op DM elsewhere — which matches what the platform
+actually allows.
+
+**Consequence.** Zero magic, zero broken expectations. Users who want true
+bot-to-bot pipelines build them via a shared group, which is the supported
+pattern.

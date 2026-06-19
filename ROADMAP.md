@@ -113,53 +113,53 @@ Telegram ── webhook ──► Cloudflare Worker (Hono + grammY)
 **Acceptance:** webhook URL responds 200, `/start` replies with welcome card.
 
 ### Phase 2 — AI pool & chat
-- [ ] `src/ai/pool.ts` with multi-account selection + cooldown state in KV.
-- [ ] `src/ai/chat.ts` — `chatComplete({tier, messages, stream})` returns either full string or `AsyncIterable<string>` (SSE parsed from CF's `stream:true`).
-- [ ] `src/handlers/message.ts` — default text handler:
+- [x] `src/ai/pool.ts` with multi-account selection + cooldown state in KV.
+- [x] `src/ai/chat.ts` — `chatComplete({tier, messages, stream})` returns either full string or `AsyncIterable<string>` (SSE parsed from CF's `stream:true`).
+- [x] `src/handlers/message.ts` — default text handler:
   - Save chat history in D1 (last 20 turns).
-  - Pick tier via `models.routeTier(text, history)`.
-  - Stream the answer back, editing the placeholder message every ~700 ms or every ~80 new tokens (whichever first), throttled to respect Telegram's 1 edit/sec/chat rule.
-- [ ] `/model fast|balanced|heavy|auto` command persists per-user choice in D1.
+  - Pick tier via `models.routeTier(text, history)`. **History tier persisted per user in `users.last_tier`** so escalation to heavy/balanced is sticky within a session.
+  - Stream the answer back, editing the placeholder message every ~900 ms, throttled to respect Telegram's 1 edit/sec/chat rule.
+- [x] `/model fast|balanced|heavy|auto` command persists per-user choice in D1.
 
 **Acceptance:** sending a long question produces a streamed, live-editing reply; `/model heavy` shows the `<think>` block formatted as an expandable HTML `<blockquote expandable>`.
 
 ### Phase 3 — Tool-calling (Bot API freedom)
-- [ ] `src/tools/registry.ts` — JSON-schema for ~30 most useful Bot API methods (send/edit/delete, reactions, invoice, poll, copy, forward, pin, chat actions, inline answer, set/get chat permissions, …).
-- [ ] `src/tools/executor.ts` — allow-list, argument validation (Zod), permission check, then `bot.api.raw[method](args)`.
-- [ ] `src/ai/chat.ts` — when the model emits `tool_calls` (Hermes / Llama function-call format), execute them and feed the result back into the loop (max 6 iterations).
-- [ ] System prompt teaches the model when to use which tool and to **prefer** rich UX: premium emoji reactions, chat effects, formatted HTML.
+- [x] `src/tools/registry.ts` — JSON-schema for ~20 most useful Bot API methods (send/edit/delete, reactions incl. premium custom_emoji_id, invoice, poll, copy, forward, pin, chat actions, dice, ban/restrict/promote, plus `generate_image`, `text_to_speech`, `schedule_reminder`, `remember_fact`).
+- [x] `src/tools/executor.ts` — allow-list, argument validation, permission check (`ADMIN_METHODS` set + owner gate), then `bot.api.raw[method](args)` via our `BotApi.call`.
+- [x] `src/ai/chat.ts` — when the model emits `tool_calls`, execute them and feed the result back into the loop (max 4 iterations).
+- [x] System prompt teaches the model when to use which tool and to **prefer** rich UX: premium emoji reactions, chat effects, formatted HTML.
 
 **Acceptance:** asking "react to my message with a 🔥 premium emoji and reply with a poll asking my favourite colour" results in (a) a reaction set on the user's message, (b) a poll sent, (c) a short confirmation text.
 
 ### Phase 4 — Multimodal
-- [ ] `/image <prompt>` → flux-1-schnell → R2-cache → `sendPhoto`.
-- [ ] Photo upload → vision model → describe / answer follow-up questions.
-- [ ] Voice / audio upload → whisper → transcript → continue conversation as if typed.
-- [ ] `/tts <text>` or model tool `text_to_speech` → MeloTTS → `sendVoice`.
+- [x] `/image <prompt>` → flux-1-schnell → `sendPhoto`. (R2 cache: optional optimisation, deferred.)
+- [x] Photo upload → vision model → describe / answer follow-up questions.
+- [x] Voice / audio upload → whisper → transcript → continue conversation as if typed.
+- [x] `/tts <text>` or model tool `text_to_speech` → MeloTTS → `sendVoice`.
 - [ ] `/translate` uses m2m100 directly (cheap) instead of the chat tier.
 
 **Acceptance:** all four media flows work end-to-end.
 
 ### Phase 5 — Secretary
-- [ ] `src/features/reminders.ts` — `/remind 2h buy milk` stores in D1; a cron trigger (`* * * * *`) wakes the Worker and dispatches due reminders.
-- [ ] `src/features/memory.ts` — at the end of every conversation turn, distil 1–3 facts about the user, embed with BGE-M3, store in D1. On each new request, retrieve top-k relevant memories and prepend to the system prompt.
-- [ ] `src/features/secretary.ts` — `/summarize` (uses heavy tier on chat history), `/poll`, `/note`.
-- [ ] Chat admin tools exposed only when the bot is admin (auto-detected via `getChatMember`).
+- [x] `src/features/reminders.ts` — `/remind 2h buy milk` stores in D1; a cron trigger (`* * * * *`) wakes the Worker and dispatches due reminders.
+- [x] `src/features/memory.ts` — at the end of every conversation turn, distil 0–3 facts about the user, embed with BGE-M3, store in D1. On each new request, retrieve top-k relevant memories and prepend to the system prompt. Surfaced to users via `/recall` and `/forget`.
+- [x] `src/features/secretary.ts` — `summarizeRecent()` (used by `/summarize`), `/poll`, `botIsAdmin()` helper.
+- [x] Chat admin tools gated server-side (owner check + `botIsAdmin` helper available for richer probes).
 
 **Acceptance:** reminders fire within ±60 s; the bot proactively references prior facts ("you mentioned you live in Tehran…").
 
 ### Phase 6 — Payments & inline
-- [ ] `/buy` opens an invoice (Telegram Stars, `currency: "XTR"`), pre-checkout query handler approves, `successful_payment` grants the user a 30-day "Pro" flag in D1 (raises quota, unlocks heavy tier).
-- [ ] Inline mode: `@AiRightHand_bot <query>` returns up to 5 article results (cached for 5 min in KV) for share-in-any-chat answers.
-- [ ] Bot-to-bot communication: a `/relay @other_bot text` command demonstrates forwarding through a private chat the user added both bots to.
+- [x] `/buy` opens an invoice (Telegram Stars, `currency: "XTR"`), pre-checkout query handler approves, `successful_payment` grants the user a 30-day "Pro" flag in D1.
+- [x] Inline mode: `@AiRightHand_bot <query>` returns a fast-tier answer (cached 5 min in KV) suitable for share-in-any-chat.
+- [x] Bot-to-bot communication: `/relay @other_bot <text>` posts a message in the current chat addressed to another bot (Telegram doesn't allow bot↔bot DMs; the relay assumes both bots share a group).
 
 **Acceptance:** a successful Stars payment grants Pro; inline queries return cached results in <500 ms.
 
 ### Phase 7 — Polish
-- [ ] Localisation (English + Persian to start; auto-detect via `from.language_code`).
-- [ ] `/stats` for the owner: per-account neuron usage, per-user request counts, top errors.
-- [ ] Llama-Guard moderation on every request (`unsafe` → polite refusal, no model reply).
-- [ ] Full smoke-test suite in `scripts/smoke.ts` runnable locally against the deployed Worker.
+- [x] Localisation (English + Persian to start; auto-detect via `from.language_code`). See `src/utils/i18n.ts`.
+- [x] `/stats` for the owner: per-account pool state, user counts (incl. Pro), message count, memory count, pending reminders.
+- [x] Llama-Guard moderation on every text request — fails *open* on input check errors, fails *closed* on output check errors. Refusal text in `features/moderation.ts`.
+- [x] Smoke-test suite in `scripts/smoke.ts` covering health, webhook auth, admin-endpoint auth, and 404.
 
 ---
 

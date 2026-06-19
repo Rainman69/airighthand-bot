@@ -11,7 +11,7 @@ import { Hono } from "hono";
 import { webhookCallback } from "grammy";
 import type { Env } from "./env.js";
 import { buildBot } from "./telegram/bot.js";
-import { dispatchDueReminders } from "./handlers/commands.js";
+import { dispatchDueReminders } from "./features/reminders.js";
 import { initDB } from "./storage/d1.js";
 import { log } from "./utils/log.js";
 

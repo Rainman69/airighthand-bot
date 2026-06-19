@@ -10,6 +10,8 @@ import { generateImage } from "../ai/image.js";
 import { synthesize } from "../ai/audio.js";
 import { log } from "../utils/log.js";
 import { redact } from "../utils/secrets.js";
+import { parseWhen } from "../features/reminders.js";
+import { rememberFact } from "../features/memory.js";
 
 export interface ExecCtx {
   env: Env;
@@ -175,32 +177,9 @@ async function dispatch(
     }
 
     case "remember_fact": {
-      await env.DB.prepare(
-        "INSERT INTO memory (user_id, fact, created_at) VALUES (?1, ?2, ?3)"
-      )
-        .bind(ctx.userId, args.fact, Date.now())
-        .run();
+      await rememberFact(env, ctx.userId, String(args.fact ?? ""));
       return { saved: true };
     }
   }
   throw new Error("Unimplemented tool: " + name);
-}
-
-/** Very lightweight 'in 2h' / 'in 30m' / ISO date parser. */
-function parseWhen(s: string): number | null {
-  s = s.trim().toLowerCase();
-  const m = s.match(/^(?:in\s+)?(\d+)\s*(s|sec|m|min|h|hr|d|day)/);
-  if (m) {
-    const n = Number(m[1]);
-    const unit = m[2];
-    const mul =
-      unit.startsWith("s") ? 1000 :
-      unit.startsWith("m") ? 60_000 :
-      unit.startsWith("h") ? 3_600_000 :
-      86_400_000;
-    return Date.now() + n * mul;
-  }
-  const d = Date.parse(s);
-  if (!isNaN(d)) return d;
-  return null;
 }
