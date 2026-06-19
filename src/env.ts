@@ -5,7 +5,11 @@ export interface Env {
   // Bindings
   KV: KVNamespace;
   DB: D1Database;
-  MEDIA: R2Bucket;
+  /**
+   * Optional R2 bucket for cached media. Not currently used by the code —
+   * declared as optional so the Worker can run without R2 enabled.
+   */
+  MEDIA?: R2Bucket;
 
   // Secrets
   TELEGRAM_BOT_TOKEN: string;

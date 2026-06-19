@@ -2,27 +2,26 @@ name = "airighthand-bot"
 main = "src/index.ts"
 compatibility_date = "2025-01-15"
 compatibility_flags = ["nodejs_compat"]
+workers_dev = true
 
 # ───────────── KV: short-term cache, rate-limit, account cooldowns ─────────────
-# Create with:  wrangler kv namespace create AIRH_KV
-# Then paste the IDs below.
 [[kv_namespaces]]
 binding = "KV"
-id = "REPLACE_WITH_KV_ID"
-preview_id = "REPLACE_WITH_KV_PREVIEW_ID"
+id = "f9004ee58bc044419fd1c073ee519bd7"
+preview_id = "d30f7b3c08994d2c880283feeb629c10"
 
 # ───────────── D1: users, chats, memory, reminders, usage ─────────────
-# Create with:  wrangler d1 create airighthand
 [[d1_databases]]
 binding = "DB"
 database_name = "airighthand"
-database_id = "REPLACE_WITH_D1_ID"
+database_id = "6fdb32d1-bb32-4cfa-b8ba-dfcf56c4eef7"
 
-# ───────────── R2: cache for generated images / audio ─────────────
-# Create with:  wrangler r2 bucket create airighthand-media
-[[r2_buckets]]
-binding = "MEDIA"
-bucket_name = "airighthand-media"
+# ───────────── R2: cache for generated images / audio (optional, disabled) ─────
+# R2 is not currently used by the code — it's reserved for future media caching.
+# Re-enable by uncommenting once R2 is activated on the account.
+# [[r2_buckets]]
+# binding = "MEDIA"
+# bucket_name = "airighthand-media"
 
 # ───────────── Cron: due-reminder dispatcher ─────────────
 [triggers]

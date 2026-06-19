@@ -62,14 +62,22 @@ export async function chatComplete(env: Env, opts: ChatOptions): Promise<ChatRes
   const { response } = await callModel(env, model, body);
   const json = (await response.json()) as {
     result?: {
+      // Llama / instruct models return OpenAI-style choices[].message.content.
+      choices?: Array<{
+        message?: { content?: string | null; tool_calls?: ToolCall[] | null };
+      }>;
+      // DeepSeek-R1 (and the older `response` field) — single string.
       response?: string;
       tool_calls?: ToolCall[];
     };
   };
-  return {
-    text: json.result?.response ?? "",
-    tool_calls: json.result?.tool_calls,
-  };
+  const r = json.result ?? {};
+  const choice = r.choices?.[0]?.message;
+  const text = choice?.content ?? r.response ?? "";
+  const tool_calls =
+    (choice?.tool_calls && choice.tool_calls.length ? choice.tool_calls : undefined) ??
+    r.tool_calls;
+  return { text, tool_calls };
 }
 
 /** Streaming chat completion. Yields text deltas. */
@@ -110,8 +118,24 @@ export async function* chatStream(
       const payload = dataLine.slice(5).trim();
       if (!payload || payload === "[DONE]") continue;
       try {
-        const obj = JSON.parse(payload) as { response?: string };
-        if (obj.response) yield obj.response;
+        const obj = JSON.parse(payload) as {
+          // OpenAI-style chunk used by Llama instruct models on CF.
+          choices?: Array<{ delta?: { content?: string | null } }>;
+          // Legacy / DeepSeek-style chunk.
+          response?: unknown;
+        };
+        const delta = obj.choices?.[0]?.delta?.content;
+        if (typeof delta === "string" && delta.length) {
+          yield delta;
+          continue;
+        }
+        const fallback = obj.response;
+        if (typeof fallback === "string" && fallback.length) {
+          yield fallback;
+        } else if (typeof fallback === "number") {
+          // CF sometimes coerces digit-only tokens to numbers; preserve them.
+          yield String(fallback);
+        }
       } catch {
         // ignore malformed line
       }

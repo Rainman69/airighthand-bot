@@ -1,6 +1,6 @@
 # Roadmap — AiRightHand Bot
 
-> **Audience:** this document is written for any developer (human or AI coding agent) picking up the project. Read it top to bottom before touching code. Each phase has concrete, verifiable acceptance criteria.
+> **Audience:** this document is written for any developer picking up the project. Read it top to bottom before touching code. Each phase has concrete, verifiable acceptance criteria.
 
 > **Style rules for contributors**
 > - Do **not** add any "built by ..." attribution to source files, commits, the README, or generated bot replies. The product is **AiRightHand**, nothing else.
@@ -203,7 +203,7 @@ Required repository secrets:
 
 ---
 
-## 6. Step-by-step for an AI agent picking this up
+## 6. Step-by-step for a new contributor picking this up
 
 1. **Read** `README.md` and this file end-to-end.
 2. `npm install`, then run `npm run typecheck`. Fix any drift.

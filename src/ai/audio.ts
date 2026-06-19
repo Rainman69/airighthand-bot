@@ -6,11 +6,26 @@ import { callModel } from "./pool.js";
 
 /** Transcribe a voice/audio file. `bytes` should be the raw OGG/MP3/WAV body. */
 export async function transcribe(env: Env, bytes: Uint8Array): Promise<string> {
-  // Whisper on CF accepts a JSON body with `audio` as an array of bytes.
-  const body = { audio: Array.from(bytes) };
-  const { response } = await callModel(env, MULTIMODAL.stt, body);
+  // whisper-large-v3-turbo on CF accepts a JSON body with `audio` as a base64
+  // string. (The older whisper-tiny endpoint accepted byte arrays; the turbo
+  // variant explicitly rejects array input and requires base64.)
+  const audio = bytesToBase64(bytes);
+  const { response } = await callModel(env, MULTIMODAL.stt, { audio });
   const j = (await response.json()) as { result?: { text?: string } };
   return j.result?.text ?? "";
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  // Chunked conversion to avoid call-stack overflow on long audio.
+  const CHUNK = 0x8000;
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    bin += String.fromCharCode.apply(
+      null,
+      Array.from(bytes.subarray(i, i + CHUNK))
+    );
+  }
+  return btoa(bin);
 }
 
 export interface TtsOptions {
