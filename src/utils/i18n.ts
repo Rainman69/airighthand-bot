@@ -43,6 +43,7 @@ I'm your AI right hand on Telegram — quick replies, deep analysis, image gener
 <b>Media</b>
 • /image &lt;prompt&gt; — generate an image
 • /tts &lt;text&gt; — speak it
+• /translate &lt;lang&gt;: &lt;text&gt; — fast m2m100 translation (or reply with /translate &lt;lang&gt;)
 • Reply to a voice/audio — I'll transcribe + answer
 
 <b>Secretary</b>
@@ -88,6 +89,7 @@ I'm your AI right hand on Telegram — quick replies, deep analysis, image gener
 <b>رسانه</b>
 • /image &lt;متن&gt; — تولید تصویر
 • /tts &lt;متن&gt; — تبدیل به صدا
+• /translate &lt;زبان&gt;: &lt;متن&gt; — ترجمه سریع با m2m100 (یا پاسخ با /translate &lt;زبان&gt;)
 • پاسخ به پیام صوتی — متن + جواب
 
 <b>منشی</b>

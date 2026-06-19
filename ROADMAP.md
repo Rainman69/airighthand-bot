@@ -136,7 +136,7 @@ Telegram ── webhook ──► Cloudflare Worker (Hono + grammY)
 - [x] Photo upload → vision model → describe / answer follow-up questions.
 - [x] Voice / audio upload → whisper → transcript → continue conversation as if typed.
 - [x] `/tts <text>` or model tool `text_to_speech` → MeloTTS → `sendVoice`.
-- [ ] `/translate` uses m2m100 directly (cheap) instead of the chat tier.
+- [x] `/translate` uses m2m100 directly (cheap) instead of the chat tier.
 
 **Acceptance:** all four media flows work end-to-end.
 

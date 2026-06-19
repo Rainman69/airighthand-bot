@@ -7,6 +7,7 @@ import { setUserModelPin, getOrCreateUser } from "../storage/d1.js";
 import { generateImage } from "../ai/image.js";
 import { synthesize, transcribe } from "../ai/audio.js";
 import { describeImage } from "../ai/vision.js";
+import { translate, normalizeLang } from "../ai/translate.js";
 import { BotApi } from "../telegram/api.js";
 import { renderForTelegram } from "../utils/markdown.js";
 import { redact } from "../utils/secrets.js";
@@ -76,6 +77,82 @@ export function registerCommands(bot: Bot, env: Env) {
       });
     } catch (e) {
       await ctx.reply("⚠️ TTS failed: " + redact(e instanceof Error ? e.message : String(e)));
+    }
+  });
+
+  // /translate — direct m2m100 translation (cheaper than going through the chat tier).
+  //
+  // Accepted shapes:
+  //   /translate to fa: Hello world
+  //   /translate fa: Hello world
+  //   /translate fa Hello world
+  //   /translate Hello world           → translates to English (or user's locale if English)
+  //   /translate [lang]                → as a reply: translates the replied-to message
+  bot.command("translate", async (ctx) => {
+    let arg = (ctx.match || "").toString().trim();
+    const repliedText =
+      ctx.message?.reply_to_message?.text ??
+      ctx.message?.reply_to_message?.caption ??
+      "";
+
+    // Strip a leading "to " for natural phrasing.
+    arg = arg.replace(/^to\s+/i, "");
+
+    let target: string | undefined;
+    let text = "";
+
+    // Try "code: rest" or "code rest"
+    const colon = arg.match(/^([a-zA-Z]{2,3}(?:[-_][a-zA-Z]{2,4})?)\s*:\s*([\s\S]+)$/);
+    const spaced = arg.match(/^([a-zA-Z]{2,3}(?:[-_][a-zA-Z]{2,4})?)\s+([\s\S]+)$/);
+
+    if (colon) {
+      target = colon[1];
+      text = colon[2].trim();
+    } else if (repliedText && /^[a-zA-Z]{2,3}(?:[-_][a-zA-Z]{2,4})?$/.test(arg)) {
+      // Reply mode: argument is just a language code.
+      target = arg;
+      text = repliedText;
+    } else if (spaced && repliedText.length === 0) {
+      target = spaced[1];
+      text = spaced[2].trim();
+    } else if (arg) {
+      text = arg;
+    } else if (repliedText) {
+      text = repliedText;
+    }
+
+    if (!text) {
+      return ctx.reply(
+        "Usage: <code>/translate &lt;lang&gt;: text</code>\n" +
+          "Examples:\n" +
+          "• <code>/translate fa: Hello world</code>\n" +
+          "• <code>/translate to en: سلام دنیا</code>\n" +
+          "• Reply to a message with <code>/translate fa</code>",
+        { parse_mode: "HTML" }
+      );
+    }
+
+    // Default target: English, unless the user's interface is English — then default to Persian
+    // as a sensible "other" direction. The user can always specify explicitly.
+    if (!target) {
+      target = (ctx.from?.language_code ?? "").toLowerCase().startsWith("en") ? "fa" : "en";
+    }
+
+    await ctx.api.sendChatAction(ctx.chat.id, "typing").catch(() => {});
+    try {
+      const out = await translate(env, { text, target });
+      if (!out) return ctx.reply("⚠️ Translation returned no text.");
+      const targetLabel = normalizeLang(target);
+      await ctx.reply(
+        `🌐 <b>${targetLabel}</b>\n${out.replace(/[<>&]/g, (c) =>
+          c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&amp;"
+        )}`,
+        { parse_mode: "HTML" }
+      );
+    } catch (e) {
+      await ctx.reply(
+        "⚠️ Translation failed: " + redact(e instanceof Error ? e.message : String(e))
+      );
     }
   });
 
